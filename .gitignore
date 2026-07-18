@@ -223,6 +223,4 @@ data/
 *.sqlite
 *.db
 
-data/scout_cache/
-
 .docker/
