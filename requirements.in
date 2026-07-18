@@ -1,0 +1,15 @@
+chromadb
+langchain_community
+langchain_core
+langchain_google_genai
+langgraph
+matplotlib
+mplsoccer
+numpy
+pandas<3
+python-dotenv
+soccerdata
+ddgs
+sentence-transformers
+streamlit
+Pillow
