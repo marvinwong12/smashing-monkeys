@@ -4,6 +4,7 @@ import json
 import os
 import re
 from PIL import Image
+import base64
 
 # 1. Page Configuration
 st.set_page_config(
@@ -19,10 +20,9 @@ st.markdown("Interact with your AI scouting department.")
 if "scout_agent" not in st.session_state:
     st.session_state.scout_agent = build_chief_scout()
     
-# 3. Initialize Chat History in Streamlit Session State
+# 3. Initialize Chat History in Streamlit Session State (Keep this as you had it)
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    
     st.session_state.messages.append({
         "role": "assistant", 
         "content": "I am the Chief Scout. Who are we looking for today?"
@@ -35,13 +35,13 @@ for message in st.session_state.messages:
         if message.get("content"):
             st.markdown(message["content"])
         
-        # Then redraw the image frame using PIL!
-        if "image" in message and message["image"]:
+        # Decode and redraw the image directly from the base64 string stored in memory!
+        if "image_base64" in message and message["image_base64"]:
             try:
-                img = Image.open(message["image"])
-                st.image(img, use_container_width=True)
-            except FileNotFoundError:
-                st.error(f"Could not find the chart file at: {message['image']}")
+                img_bytes = base64.b64decode(message["image_base64"])
+                st.image(img_bytes, use_container_width=True)
+            except Exception as e:
+                st.error(f"Could not render historical chart: {e}")
 
 # 5. Capture user input
 user_query = st.chat_input("Ask your scouting agent a question...")
@@ -74,61 +74,65 @@ if user_query:
             else:
                 response_payload = raw_content
 
-            # --- THE NEW REGEX PARSING LOGIC ---
-            image_path = None
-            clean_text = response_payload
+            print("\n--- NEW MESSAGE CHAIN ---")
+            for m in final_state["messages"]:
+                print(f"TYPE: {getattr(m, 'type', 'unknown')} | CONTENT: {str(m.content)[:100]}...")
+            print("-------------------------\n")
 
-            # 1. Detect if the LLM wrapped the file in Markdown: ![Alt Text](filename.png)
-            markdown_img_match = re.search(r"!\[.*?\]\((.*?\.png)\)", response_payload, re.IGNORECASE)
-            
-            if markdown_img_match:
-                image_path = markdown_img_match.group(1)
-                # Strip the broken markdown tag out of the text so we don't render a broken icon
-                clean_text = re.sub(r"!\[.*?\]\(.*?\.png\)", "", response_payload, flags=re.IGNORECASE).strip()
-            else:
-                # 2. Fallback: Check if it returned raw JSON instead
-                clean_payload = response_payload.strip()
-                if clean_payload.startswith("```json"):
-                    clean_payload = clean_payload.replace("```json", "").replace("```", "").strip()
-                elif clean_payload.startswith("```"):
-                    clean_payload = clean_payload.replace("```", "").strip()
-                
-                try:
-                    parsed_json = json.loads(clean_payload)
-                    if isinstance(parsed_json, dict) and "image_file" in parsed_json:
-                        image_path = parsed_json["image_file"]
-                        clean_text = "📊 *Generated percentile chart comparison for your request.*"
-                except (json.JSONDecodeError, TypeError, AttributeError):
-                    pass
+            image_base64_data = None
+            clean_text = response_payload  # AI's final text summary
+
+            # Scan the conversation history backwards to find the tool output
+            for msg in reversed(final_state["messages"]):
+                if getattr(msg, "type", "") == "tool":
+                    # Convert content to string safely just to check if our key is in it
+                    content_str = str(msg.content)
+                    
+                    if "image_base64" in content_str:
+                        try:
+                            # 1. If LangGraph already parsed it into a dictionary automatically
+                            if isinstance(msg.content, dict):
+                                image_base64_data = msg.content.get("image_base64")
+                            
+                            # 2. If it's a raw JSON string
+                            elif isinstance(msg.content, str):
+                                parsed_json = json.loads(msg.content)
+                                image_base64_data = parsed_json.get("image_base64")
+                                
+                            if image_base64_data:
+                                break  # We successfully extracted the image, stop searching!
+                                
+                        except (json.JSONDecodeError, TypeError) as e:
+                            print(f"Extraction failed on this message: {e}")
+                            pass
 
         # D. Display and save the response
-        if image_path:
-            absolute_image_path = os.path.abspath(image_path)
-            
+        if image_base64_data:
             try:
-                # Force load the image data into memory using PIL
-                img = Image.open(absolute_image_path)
+                # Add base64 padding (==) just in case the string length got slightly clipped
+                padded_base64 = image_base64_data + "=" * ((4 - len(image_base64_data) % 4) % 4)
+                img_bytes = base64.b64decode(padded_base64)
                 
-                # Render any conversational text from the agent FIRST
+                # Render the AI's conversational text FIRST
                 if clean_text:
                     message_placeholder.markdown(clean_text)
                 else:
                     message_placeholder.empty()
                     
                 # Render the pixel data natively BELOW the text
-                st.image(img, use_container_width=True)
+                st.image(img_bytes, use_container_width=True)
                 
-                # Save BOTH to history
+                # Save BOTH to Streamlit's history so it stays when you refresh
                 st.session_state.messages.append({
                     "role": "assistant", 
                     "content": clean_text,
-                    "image": absolute_image_path 
+                    "image_base64": padded_base64 
                 })
-            except FileNotFoundError:
-                message_placeholder.error(f"Error: The chart was generated but Streamlit could not locate it at: {absolute_image_path}")
+            except Exception as e:
+                message_placeholder.error(f"Error decoding the chart visualization: {str(e)}")
                 
         else:
-            # Fall back to standard markdown text for normal scouting answers
+            # Fall back to standard markdown text if absolutely no image was found
             message_placeholder.markdown(clean_text)
             st.session_state.messages.append({
                 "role": "assistant", 

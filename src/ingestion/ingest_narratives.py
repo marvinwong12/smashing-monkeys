@@ -32,13 +32,13 @@ def add_custom_scouting_report(player_name: str, report_text: str):
         metadatas=[{"player_match_name": clean_name, "original_name": player_name}],
         ids=[doc_id]
     )
-    print(f"📝 Successfully filed proprietary report for {player_name} (ID: {doc_id})")
+    print(f"Successfully filed proprietary report for {player_name} (ID: {doc_id})")
 
 # ==========================================
 # INTERACTIVE SCOUT TERMINAL ENTRYPOINT
 # ==========================================
 if __name__ == "__main__":
-    print("\n🦁 SMASHING MONKEYS - PROPRIETARY INTEL PORTAL 🦁")
+    print("\nSMASHING MONKEYS - PROPRIETARY INTEL PORTAL")
     print("="*48)
     
     while True:
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         report = " ".join(lines).strip()
         
         if not report:
-            print("❌ Empty report discarded.")
+            print("Empty report discarded.")
             continue
             
         add_custom_scouting_report(player, report)

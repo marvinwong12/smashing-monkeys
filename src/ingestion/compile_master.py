@@ -16,7 +16,7 @@ def compile_master_dataset(cache_dir: str, understat_season: str = "2025", fbref
     os.makedirs(cache_dir, exist_ok=True)
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     
-    # <--- CHANGE TO .db PATH
+    # Define .db PATH
     db_path = os.path.join(project_root, "data", "scout_cache", "scout_platform.db") 
     
     sofifa_path = os.path.join(cache_dir, "sofifa_fc26_ratings.csv")
@@ -63,12 +63,12 @@ def compile_master_dataset(cache_dir: str, understat_season: str = "2025", fbref
     elif 'player' in df_sofifa.columns:
         df_sofifa['match_name'] = df_sofifa['player'].apply(normalize_name)
 
-    print("🚀 Initiating offline ETL pipeline for Chief Scout Agent...")
+    print("Initiating offline ETL pipeline for Chief Scout Agent...")
 
     # ==========================================
     # C. FUZZY MATCH PERFORMANCE DATA (ANCHOR TO DEFENSE)
     # ==========================================
-    print("🔍 Aligning mismatched player names between datasets (Anchoring to Defense)...")
+    print("Aligning mismatched player names between datasets (Anchoring to Defense)...")
     attack_names = df_attack['match_name'].unique()
     defense_names = df_defense['match_name'].unique()
 
@@ -119,7 +119,7 @@ def compile_master_dataset(cache_dir: str, understat_season: str = "2025", fbref
     # ==========================================
     # D. INTEGRATE FINANCIALS
     # ==========================================
-    print("💰 Integrating Financial & Contract constraints...")
+    print("Integrating Financial & Contract constraints...")
     df_val = df_val.drop_duplicates(subset=['match_name'], keep='first')
     
     # Merge the financial data
@@ -165,7 +165,7 @@ def compile_master_dataset(cache_dir: str, understat_season: str = "2025", fbref
     unjoined = master_df[missing_sofifa & valid_lookup]
     
     if not unjoined.empty:
-        print(f"🔄 Running token fallback resolution for {len(unjoined)} players...")
+        print(f"Running token fallback resolution for {len(unjoined)} players...")
         sofifa_records = [{'tokens': set(str(row['match_name']).split()), 'data': row.to_dict()} for _, row in df_sofifa.iterrows()]
         sofifa_cols = [c for c in df_sofifa.columns if c not in ['match_name', 'player']]
         
@@ -179,7 +179,7 @@ def compile_master_dataset(cache_dir: str, understat_season: str = "2025", fbref
                 for col in sofifa_cols:
                     master_df.at[idx, col] = match[col]
                 resolved += 1
-        print(f"✅ Token fallback resolved {resolved} aliases.")
+        print(f"Token fallback resolved {resolved} aliases.")
 
         
     master_df = master_df.drop(columns=['sofifa_lookup_name'])
@@ -187,7 +187,7 @@ def compile_master_dataset(cache_dir: str, understat_season: str = "2025", fbref
     # ==========================================
     # F. AGENT DATA STANDARDIZATION & EXPORT
     # ==========================================
-    print("🧹 Finalizing data typings and schema formatting...")
+    print("Finalizing data typings and schema formatting...")
     if 'preferred_foot' in master_df.columns:
         master_df['preferred_foot'] = master_df['preferred_foot'].astype(str).str.strip().str.capitalize()
         master_df['preferred_foot'] = master_df['preferred_foot'].replace({'Nan': 'Unknown', 'None': 'Unknown'})
@@ -210,7 +210,7 @@ def compile_master_dataset(cache_dir: str, understat_season: str = "2025", fbref
     # ==========================================
     # CALCULATE PER-90 VOLUME METRICS
     # ==========================================
-    print("⏱️ Generating Per-90 metrics and stripping raw volume columns...")
+    print("Generating Per-90 metrics and stripping raw volume columns...")
     volume_metrics = [
         'goals', 'np_goals', 'xg', 'np_xg', 'assists', 'xa', 'key_passes', 'shots', 
         'xg_chain', 'xg_buildup', 'yellow_cards', 'red_cards', 
@@ -233,7 +233,7 @@ def compile_master_dataset(cache_dir: str, understat_season: str = "2025", fbref
     with sqlite3.connect(db_path) as conn:
         master_df.to_sql("players", conn, if_exists="replace", index=False)
 
-    print(f"🎯 Master dataset successfully compiled to SQL! Target: {db_path} (Shape: {master_df.shape})")
+    print(f"Master dataset successfully compiled to SQL! Target: {db_path} (Shape: {master_df.shape})")
     return db_path
 
 if __name__ == "__main__":

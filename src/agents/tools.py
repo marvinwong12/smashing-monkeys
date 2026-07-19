@@ -291,18 +291,22 @@ def generate_percentile_comparison_chart(
             
         fig.text(0.95, 0.02, "[Source: SQLite Master Database]", ha='right', color='#888888', fontproperties=font_normal)
         
-        # 5. Output Management: Convert the matplotlib plot directly to a clean Base64 string
-        # Create a clean filename
-        safe_name = player1_name.replace(" ", "_").lower()
-        filename = f"{safe_name}_radar.png"
-        filepath = os.path.join(os.getcwd(), filename)
+        # 5. Output Management: Convert the matplotlib plot directly to an in-memory Base64 string
+        buffer = io.BytesIO()
         
-        # Save the figure directly to the docker workspace
-        plt.savefig(filepath, format='png', bbox_inches='tight', dpi=120)
+        # Save the figure directly into the RAM buffer instead of the hard drive
+        plt.savefig(buffer, format='png', bbox_inches='tight', dpi=120)
         plt.close(fig)
         
-        # Return a TINY footprint string to the LLM so it doesn't crash
-        return json.dumps({"image_file": filename}, ensure_ascii=False)
+        # Rewind the buffer to the beginning and encode it as a text string
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        
+        # Return the base64 string inside the JSON payload
+        return json.dumps({
+            "status": "success",
+            "image_base64": image_base64
+        }, ensure_ascii=False)
         
     except Exception as e:
         return f"System Execution Error: {str(e)}"

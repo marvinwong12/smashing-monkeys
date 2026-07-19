@@ -11,6 +11,8 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from src.agents.tools import SCOUT_TOOLS
 from langchain_core.messages import trim_messages
+import json
+import base64
 
 # Load the API key from your hidden .env file
 load_dotenv()
@@ -22,9 +24,6 @@ def build_chief_scout():
     """
     Initializes the LangGraph ReAct agent with explicit directives
     for handling per-90 metrics, wages, ages, and custom tool sorting.
-    
-    All routed tools pull from warmed, thread-safe memory repositories 
-    to guarantee sub-second execution speeds.
     """
     # Initialize the primary reasoning LLM
     llm = ChatGoogleGenerativeAI(
@@ -56,29 +55,68 @@ def build_chief_scout():
         "'query_player_narrative_tool' to check their qualitative profiles. \n"
         "• If the user asks about injuries, character, or tactical fit, query the narrative tool for the specific player.\n"
         "• Synthesize both the raw numbers and the text reports into your final scouting brief.\n\n"
+        "VISUALIZATION & PROFILING:\n"
+        "When a user asks for a comparison chart, radar chart, visual profile, or to compare players side-by-side, "
+        "you MUST ALWAYS call the 'generate_percentile_comparison_chart' tool. "
+        "Intelligently select the appropriate `metric_group` argument ('attacking', 'defending', or 'comprehensive') based on the players' natural positions on the pitch.\n\n"
         "CRITICAL RULES:\n"
         "1. Never invent or hallucinate metrics, injury histories, or character traits. Rely STRICTLY on your tools.\n"
         "2. When the user sets a specific parameter threshold (e.g., maximum age, maximum wage, maximum transfer value, minimum height, or minimum weak foot ratings), you MUST explicitly pass those numeric values into the corresponding arguments of the discovery tool.\n"
         "3. For geographic or physical traits like 'league', 'preferred_foot', or 'height', map them explicitly to the tool's dedicated filtering parameters rather than treating them as loose text search values.\n"
-        "4. Do not run generic searches dropping filters unless explicitly asked to broaden the range by the user."
+        "4. Do not run generic searches dropping filters unless explicitly asked to broaden the range by the user.\n"
+        "5. When asked for visual charts, radar charts, or percentile comparisons, DO NOT hallucinate stats or EA Sports/video game ratings. You MUST trigger the chart generation tool and wait for its output."
     )
 
     # In-memory checkpointer to persist conversation state/threads seamlessly
     checkpointer = MemorySaver()
 
     def state_trimmer_modifier(state) -> list:
-        """Intercepts agent state and trims old messages before calling Gemini."""
+        """Intercepts agent state, scrubs heavy base64 images, and trims old messages before calling Gemini."""
+        
+        # 1. First, scrub any base64 data out of the tool messages
+        cleaned_messages = []
+        for msg in state["messages"]:
+            if getattr(msg, "type", "") == "tool":
+                # Convert content to string safely just to check if our key is in it
+                content_str = str(msg.content)
+                
+                if "image_base64" in content_str:
+                    try:
+                        # Create a lightweight version of the payload for the LLM
+                        light_data = {
+                            "status": "success",
+                            "message": "Chart successfully generated and displayed to user. Summarize the comparison briefly.",
+                            "image_base64": "[IMAGE_DATA_SCRUBBED_FOR_TOKEN_EFFICIENCY]"
+                        }
+                        
+                        # Clone the message but with the tiny payload
+                        # msg.__class__ ensures we keep the exact message type (ToolMessage)
+                        clean_msg = msg.__class__(
+                            content=json.dumps(light_data),
+                            name=getattr(msg, "name", "generate_percentile_comparison_chart"),
+                            tool_call_id=getattr(msg, "tool_call_id", "")
+                        )
+                        cleaned_messages.append(clean_msg)
+                        continue  # Skip appending the original heavy message
+                    except Exception as e:
+                        print(f"Scrubber failed: {e}")
+                        pass
+            
+            # Keep all other normal messages exactly as they are
+            cleaned_messages.append(msg)
+
+        # 2. Now apply the token trimmer to the newly cleaned list of messages
         trimmed = trim_messages(
-            state["messages"],
-            max_tokens=150000,          # Set comfortably below Gemini's 250k minute limit
-            strategy="last",            # Keep the most recent conversation context
-            token_counter=len,          # Approximates by message count, or pass a proper tokenizer
-            start_on="human",           # Assures valid chat API structure
-            include_system=False,       # We inject our specific system_prompt below instead
+            cleaned_messages,
+            max_tokens=150000,          
+            strategy="last",            
+            token_counter=len,          
+            start_on="human",           
+            include_system=False,       
             allow_partial=True,
         )
         
-        # Prepend the system instructions so the model always remembers its role
+        # 3. Prepend the system instructions
         return [("system", system_prompt)] + trimmed
 
     # Create the compilation graph engine
@@ -86,7 +124,7 @@ def build_chief_scout():
         model=llm,
         tools=SCOUT_TOOLS,
         checkpointer=checkpointer,
-        prompt=state_trimmer_modifier
+        prompt=state_trimmer_modifier # Use state_modifier instead of prompt for standard LangGraph
     )
     
     return app
