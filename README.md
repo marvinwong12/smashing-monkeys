@@ -29,6 +29,7 @@ The system includes automated web scraping and ingestion scripts configured to h
 * **FbRef:** Comprehensive performance analytics, including passing networks, progressive metrics, and defensive actions.
 * **Understat:** Granular expected metrics ($xG$, $xA$, $xG$ Chain) mapped across match timelines.
 * **Capology:** Financial data, salary structures, contract lengths, and estimated transfer market valuations.
+
 This only contains players from the *Big Five European Leagues:* The English Premier League, French Ligue 1, German Bundesliga, Italian Serie A and the Spanish La Liga.
 
 ### 2. Relational & Vector Storage Layer
