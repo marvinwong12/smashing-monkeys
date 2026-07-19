@@ -84,6 +84,11 @@ if user_query:
 
             # Scan the conversation history backwards to find the tool output
             for msg in reversed(final_state["messages"]):
+                
+                # Stop looking once we hit the user's prompt for this turn ---
+                if getattr(msg, "type", "") == "human":
+                    break 
+
                 if getattr(msg, "type", "") == "tool":
                     # Convert content to string safely just to check if our key is in it
                     content_str = str(msg.content)
